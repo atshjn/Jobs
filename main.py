@@ -2,6 +2,10 @@ from fastapi import FastAPI, Query
 from pydantic import BaseModel
 from typing import List, Optional
 import requests
+import logging
+
+# Enable logging
+logging.basicConfig(level=logging.INFO)
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -38,19 +42,31 @@ def fetch_external_jobs(location: Optional[str], skills: Optional[List[str]]):
         "where": location or "",
         "what": ",".join(skills) if skills else ""
     }
+    
     response = requests.get(ADZUNA_API_URL, params=params)
+
     if response.status_code == 200:
         data = response.json()
-        return [
-            Job(
-                title=job["title"],
-                company=job.get("company", {}).get("display_name", "Unknown"),
-                location=job.get("location", {}).get("display_name", "Remote"),
-                type="Part-time" if "part-time" in job.get("title", "").lower() else "Full-time",
-                category=None,
-                skills_required=[],
-                salary=job.get("salary_min", "Unknown"),
-                apply_url=job.get("redirect_url", "")
-            ) for job in data.get("results", [])
-        ]
+        
+        # Log API response for debugging
+        logging.info(f"API Response: {data}")
+
+        try:
+            jobs = [
+                Job(
+                    title=job.get("title", "Unknown"),
+                    company=job.get("company", {}).get("display_name", "Unknown"),
+                    location=job.get("location", {}).get("display_name", "Remote"),
+                    type="Part-time" if "part-time" in job.get("title", "").lower() else "Full-time",
+                    category=None,  # No category data from Adzuna
+                    skills_required=[],  # No skill data from Adzuna
+                    salary=str(job.get("salary_min", "Unknown")),  # Ensure salary is a string
+                    apply_url=job.get("redirect_url", "")
+                ) for job in data.get("results", [])
+            ]
+            return jobs
+        except Exception as e:
+            logging.error(f"Error processing job data: {e}")
+    
+    logging.error(f"Failed to fetch jobs: {response.status_code} - {response.text}")
     return []
